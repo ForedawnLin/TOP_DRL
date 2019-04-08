@@ -1,1 +1,1 @@
-Quick prove of DRL on TOP (v1, small scale).
+Quick proof of DRL on TOP (v1, small scale).
