@@ -10,6 +10,28 @@ from scipy.sparse.linalg import spsolve
 import sys
 # print (sys.version)
 
+
+def make(env_name):
+	### assign an environment 
+	if env_name=='TOP_OPT_v1':
+		 return TOP_OPT_v1()
+	else:
+		print ("No such environment")
+
+
+
+class Action_Space_Burn_In(): 
+	#### the function define operations for initial action space for burn in  
+	def __init__(self,action_domain):
+		self.action_domain=action_domain
+	def sample(self,method):
+		### method: sampling method ("uniform")
+		if method=="uniform":
+			return np.random.randint(self.action_domain[2][0],self.action_domain[2][1]+1,size=(self.action_domain[0],self.action_domain[1]))
+		else:
+			print ("no such sampling method")
+
+
 class TOP_OPT_v1(): 
 	### The first version (naive) environment for TOP_OPT_v1 
 	### Caution: Reset the class when you first use it 
@@ -32,7 +54,11 @@ class TOP_OPT_v1():
 		self.state=[]  ## init state 
 		self.init_material=[] ### sum of initial material distribution 
 		self.x_old=[] ### the material distribution from last update
-	
+
+		### define action space for the env 
+		self.action_domain=[self.nEleY,self.nEleX,(0,1)] ### [space domain X, space domain Y, value space]
+		self.action_space=Action_Space_Burn_In(self.action_domain) ### init action_sapce
+
 		### material properties ###
 		self.E=1    ### material young's modulus 
 		self.nu=0.3 ### possion's ratio 
@@ -79,13 +105,13 @@ class TOP_OPT_v1():
 		### 88 lines ends ###
 
 		
-		### 4. reset vol frac: constant across all elements 
-		vol_frac=self.vol_frac
-		vol_mat=vol_frac*np.ones((self.nNodeY,self.nNodeX),dtype=float)  ### n*m
+		### 4. reset vol frac: constant across all elements  (currently, disabled, vol_frac constrained in rewards)
+		# vol_frac=self.vol_frac
+		# vol_mat=vol_frac*np.ones((self.nNodeY,self.nNodeX),dtype=float)  ### n*m
 	
 
 		### concatenate all the chanvol_fracnels 
-		self.state=np.dstack((material_distri,BC_mat,f_mat,vol_mat))  ### n*m*5
+		self.state=np.dstack((material_distri,BC_mat,f_mat))  ### n*m*4; no vol_frac
 		return self.state  
 
 
@@ -217,13 +243,13 @@ class TOP_OPT_v1():
 		# action[2,3]=1
 		# action[1,1]=1
 		self.state,reward, is_terminate,a=self.step(action)
-		# print('state',self.state.shape)
-		# print ('reward',reward)
-		# print('terminate',is_terminate)
-		# print('a',a)
-
+		print('state',self.state.shape)
+		print ('reward',reward)
+		print('terminate',is_terminate)
+		
 
 if __name__=='__main__':
-	Test=TOP_OPT_v1() 
+	Test=make("TOP_OPT_v1")
 	Test.test()
+	Test.action_space.sample('uniform')
 

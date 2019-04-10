@@ -1,7 +1,11 @@
 #!/usr/bin/env python
-import keras, tensorflow as tf, numpy as np, gym, sys, copy, argparse, random
+import keras, tensorflow as tf, numpy as np, sys, copy, argparse, random
 import matplotlib.pyplot as plt
 import os
+### Tong added: for making TOP env ####
+sys.path.insert(0,'env')
+import TOP_OPT_envs as gym 
+
 
 np.random.seed(10703)
 tf.set_random_seed(10703)
@@ -22,37 +26,72 @@ class QNetwork():
 			self.learning_rate = 0.0001
 			self.architecture = [16, 32, 8]
 
-		if environment_name == 'MountainCar-v0':
+		elif environment_name == 'MountainCar-v0':
 			self.nObservation = 2
 			self.nAction = 3
 			self.learning_rate = 0.0002
 			self.architecture = [16, 32, 16]
 
-		kernel_init = tf.random_uniform_initializer(-0.5, 0.5)
-		bias_init = tf.constant_initializer(0)
-		self.input = tf.placeholder(tf.float32, shape=[None, self.nObservation], name='input')
-		with tf.variable_scope(networkname):
-			layer1 = tf.layers.dense(self.input, self.architecture[0], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer1', trainable=trianable)
-			layer2 = tf.layers.dense(layer1, self.architecture[1], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer2', trainable=trianable)
-			layer3 = tf.layers.dense(layer2, self.architecture[2], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer3', trainable=trianable)
-			self.output = tf.layers.dense(layer3, self.nAction, kernel_initializer=kernel_init, bias_initializer=bias_init, name='output', trainable=trianable)
+		### Tong added Top env:
+		elif environment_name == 'TOP_OPT_v1':
+			self.state_shape= [4,5,4] #### row *coln*depth 
+			self.action_shape = [4,5] ### row*coln
+			self.learning_rate = 0.0002
+			self.architecture = [16, 32, 16]
 
-		self.targetQ = tf.placeholder(tf.float32, shape=[None, self.nAction], name='target')
+		##### Tong added: network setup and training opts 
+		if environment_name == 'TOP_OPT_v1':
+			kernel_init = tf.random_uniform_initializer(-0.5, 0.5)
+			bias_init = tf.constant_initializer(0)
+			self.input = tf.placeholder(tf.float32, shape=[None, self.state_shape[0],self.state_shape[1],self.state_shape[2]], name='input')
+			with tf.variable_scope(networkname):
+				conv1 = tf.layers.conv2d(inputs=self.input,filters=32,kernel_size=[3,3], padding="valid", activation=tf.nn.relu,name="conv1")
+				pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=1)
+				conv1_trans=tf.layers.conv2d_transpose(pool1,filters=32,kernel_size=[2,2],strides=(1, 1), padding='valid', activation=tf.nn.relu,name="conv1_trans")
+				self.output=tf.layers.conv2d_transpose(conv1_trans,filters=2,kernel_size=[2,2],strides=(1, 1), padding='valid', activation=tf.nn.relu,name="output")
+				# self.output = tf.layers.dense(layer3, self.nAction, kernel_initializer=kernel_init, bias_initializer=bias_init, name='output', trainable=trianable)
+				# print ("output shape:",self.output.shape.dims)
+				# sys.exit()
+			self.targetQ = tf.placeholder(tf.float32, shape=[None, self.state_shape[0]-1,self.state_shape[1]-1,2], name='target')
 
-		if trianable == True:
-			self.loss = tf.losses.mean_squared_error(self.targetQ, self.output)
+			if trianable == True:
+				self.loss = tf.losses.mean_squared_error(self.targetQ, self.output)
+				self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
 
-			self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+			with tf.variable_scope(networkname, reuse=True):
+				self.w1 = tf.get_variable('conv1/kernel')
+				self.b1 = tf.get_variable('conv1/bias')
+				self.w2 = tf.get_variable('conv1_trans/kernel')
+				self.b2 = tf.get_variable('conv1_trans/bias')
+				self.w3 = tf.get_variable('output/kernel')
+				self.b3 = tf.get_variable('output/bias')
+		#### Tong add ends ###########
+		else:
+			kernel_init = tf.random_uniform_initializer(-0.5, 0.5)
+			bias_init = tf.constant_initializer(0)
+			self.input = tf.placeholder(tf.float32, shape=[None, self.nObservation], name='input')
+			with tf.variable_scope(networkname):
+				layer1 = tf.layers.dense(self.input, self.architecture[0], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer1', trainable=trianable)
+				layer2 = tf.layers.dense(layer1, self.architecture[1], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer2', trainable=trianable)
+				layer3 = tf.layers.dense(layer2, self.architecture[2], tf.nn.relu, kernel_initializer=kernel_init, bias_initializer=bias_init, name='layer3', trainable=trianable)
+				self.output = tf.layers.dense(layer3, self.nAction, kernel_initializer=kernel_init, bias_initializer=bias_init, name='output', trainable=trianable)
 
-		with tf.variable_scope(networkname, reuse=True):
-			self.w1 = tf.get_variable('layer1/kernel')
-			self.b1 = tf.get_variable('layer1/bias')
-			self.w2 = tf.get_variable('layer2/kernel')
-			self.b2 = tf.get_variable('layer2/bias')
-			self.w3 = tf.get_variable('layer3/kernel')
-			self.b3 = tf.get_variable('layer3/bias')
-			self.w4 = tf.get_variable('output/kernel')
-			self.b4 = tf.get_variable('output/bias')
+			self.targetQ = tf.placeholder(tf.float32, shape=[None, self.nAction], name='target')
+
+			if trianable == True:
+				self.loss = tf.losses.mean_squared_error(self.targetQ, self.output)
+
+				self.opt = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
+
+			with tf.variable_scope(networkname, reuse=True):
+				self.w1 = tf.get_variable('layer1/kernel')
+				self.b1 = tf.get_variable('layer1/bias')
+				self.w2 = tf.get_variable('layer2/kernel')
+				self.b2 = tf.get_variable('layer2/bias')
+				self.w3 = tf.get_variable('layer3/kernel')
+				self.b3 = tf.get_variable('layer3/bias')
+				self.w4 = tf.get_variable('output/kernel')
+				self.b4 = tf.get_variable('output/bias')
 
 
 
@@ -120,8 +159,11 @@ class DQN_Agent():
 
 		if environment_name == 'CartPole-v0':
 			self.gamma = 0.99
-		if environment_name == 'MountainCar-v0':
+		elif environment_name == 'MountainCar-v0':
 			self.gamma = 1.0
+		elif environment_name == 'TOP_OPT_v1':
+			self.gamma = 0.99
+
 		self.max_episodes = 10001
 		self.batch_size = 32
 		self.render = render
@@ -131,7 +173,7 @@ class DQN_Agent():
 		self.replay = Replay_Memory()
 
 		self.env = gym.make(environment_name)
-		self.env.seed(1)
+		# self.env.seed(1)  ### Tong added: no seed 
 
 		self.init = tf.global_variables_initializer()
 
@@ -142,11 +184,17 @@ class DQN_Agent():
 
 	def epsilon_greedy_policy(self, q_values):
 		# Creating epsilon greedy probabilities to sample from.
-		rnd = np.random.rand()
-		if rnd <= self.epsilon:
-			return np.random.randint(len(q_values))
-		else:
-			return np.argmax(q_values)
+		q_values=np.squeeze(q_values)
+		rnd = np.random.rand(q_values.shape[0],q_values.shape[1])  ### used for element-wise epsilon greedy policy 
+		bool_array=(rnd <= self.epsilon).astype(int)  ### for these element <= epsilon val, we set its value to one
+		rnd_action=np.random.randint(0,2,size=(q_values.shape[0],q_values.shape[1])) ### random action 
+		max_q_action= (q_values[:,:,0]<=q_values[:,:,1]).astype(int)   ### if 0 channel less than 1 channel, choose action 0, otherwsie choose 1 
+		return bool_array*rnd_action+ (1-bool_array)*max_q_action    ### element-wise epsilon greedy policy  
+
+		# if rnd <= self.epsilon:
+		# 	return np.random.randint(len(q_values))
+		# else:
+		# 	return np.argmax(q_values)
 
 	def greedy_policy(self, q_values):
 		# Creating greedy policy for test time. 
@@ -159,8 +207,9 @@ class DQN_Agent():
 		self.sess.run(tf.assign(self.tNetwork.b2, self.qNetwork.b2))
 		self.sess.run(tf.assign(self.tNetwork.w3, self.qNetwork.w3))
 		self.sess.run(tf.assign(self.tNetwork.b3, self.qNetwork.b3))
-		self.sess.run(tf.assign(self.tNetwork.w4, self.qNetwork.w4))
-		self.sess.run(tf.assign(self.tNetwork.b4, self.qNetwork.b4))
+		#### Tong added: network changed, no w4,b3
+		# self.sess.run(tf.assign(self.tNetwork.w4, self.qNetwork.w4))
+		# self.sess.run(tf.assign(self.tNetwork.b4, self.qNetwork.b4))
 
 	def train(self):
 		# In this function, we will train our network. 
@@ -176,40 +225,59 @@ class DQN_Agent():
 			self.burn_in_memory()
 		for episode in np.arange(self.max_episodes):
 			state = self.env.reset()
-			print ('Tong: state',state)
-			if self.render:
-				self.env.render()
+			# print ('Tong: state',state)
+			# if self.render:   ### Tong commented: no render function ()
+			# 	self.env.render()
 			is_terminal = False
 			rewardi = 0.0
 			if episode % 10 == 0:
 				self.network_assign()
 			while not is_terminal:
-				observation = np.array(state).reshape(1, -1)
+				observation = np.expand_dims(np.array(state),axis=0) ## Tong changed: to [1,state_size_shape]
+				# print (observation.shape)
+				# sys.exit()
 				q_values = self.sess.run(self.qNetwork.output, feed_dict={self.qNetwork.input: observation})
+				# print ("q_value_shape",q_values.shape)
 				action = self.epsilon_greedy_policy(q_values)
+				# print ("actions",action)
+				# sys.exit()
 				nextstate, reward, is_terminal, debug_info = self.env.step(action)
-				print ('Tong: nxt_state,reward,is_terminal,debug_info',nextstate,reward,is_terminal,debug_info)
-				if self.render:
-					self.env.render()
+				# print ('Tong: nxt_state,reward,is_terminal,debug_info',nextstate[:,:,0],reward,is_terminal,debug_info)
+				# if self.render:  ### Tong commented: no render function ()
+				# 	self.env.render()
 				self.replay.append([state, action, reward, nextstate, is_terminal])
 				state = nextstate
 				rewardi = rewardi+reward
 
 				batch = self.replay.sample_batch(self.batch_size)
+				# print ('batch',batch)
 				batch_observation = np.array([trans[0] for trans in batch])
 				batch_action = np.array([trans[1] for trans in batch])
 				batch_reward = np.array([trans[2] for trans in batch])
 				batch_observation_next = np.array([trans[3] for trans in batch])
 				batch_is_terminal = np.array([trans[4] for trans in batch])
+				# print ('batch state shape',batch_observation.shape)
 				q_batch = self.sess.run(self.qNetwork.output, feed_dict={self.qNetwork.input: batch_observation}) 
 				q_batch_next = self.sess.run(self.tNetwork.output, feed_dict={self.tNetwork.input: batch_observation_next}) 
 				q_batch_nextq = self.sess.run(self.qNetwork.output, feed_dict={self.qNetwork.input: batch_observation_next})
-				batch_actionq = np.argmax(q_batch_nextq,axis=1)
-		
-				y_batch = batch_reward+self.gamma*(1-batch_is_terminal)*q_batch_next[np.arange(self.batch_size),batch_actionq]
-
+				# print ('batch state shape',q_batch_nextq.shape)
+				# batch_actionq = np.argmax(q_batch_nextq,axis=1)
+				batch_actionq = np.argmax(q_batch_nextq,axis=3) ### Tong added: choose the action that has a larger p -value
+				# print ('batch_actionq',batch_actionq.shape)
+				# print ('q_batch_next',q_batch_next.shape)
+				
+				# y_batch = batch_reward+self.gamma*(1-batch_is_terminal)*q_batch_next[np.arange(self.batch_size),:,:,batch_actionq]
+				### Tong: right now, the reward is added independently to each of the element (may need to change)
+				# y_batch_a0 = batch_reward[:,np.newaxis,np.newaxis]+self.gamma*(1-batch_is_terminal)*q_batch_next[np.arange(self.batch_size),:,:,0]*(1-batch_actionq)+q_batch[:,:,:,0]*batch_actionq  ###  update action 0 channel 
+				y_batch_a0 = batch_reward[:,np.newaxis,np.newaxis]+self.gamma*(1-batch_is_terminal)[:,np.newaxis,np.newaxis]*q_batch_next[np.arange(self.batch_size),:,:,0]*(1-batch_actionq)+q_batch[:,:,:,0]*batch_actionq  ###  update action 0 channel 
+				y_batch_a1 = batch_reward[:,np.newaxis,np.newaxis]+self.gamma*(1-batch_is_terminal)[:,np.newaxis,np.newaxis]*q_batch_next[np.arange(self.batch_size),:,:,1]*(batch_actionq)+q_batch[:,:,:,1]*(1-batch_actionq)  ### update action 1 channel 
+				# print ('shapes',y_batch_a0.shape,y_batch_a1.shape)
 				targetQ = q_batch.copy() ### Tong: coding habit 
-				targetQ[np.arange(self.batch_size), batch_action] = y_batch  ### Tong: MSE trick, same element diff = 0 
+				# targetQ[np.arange(self.batch_size), batch_action] = y_batch  ### Tong: MSE trick, same element diff = 0 
+				### Tong add: change the target Q update rule 
+				targetQ[np.arange(self.batch_size),:,:,0] = y_batch_a0  ### Tong
+				targetQ[np.arange(self.batch_size),:,:,1] = y_batch_a1  ### Tong
+				### ends ### 
 				_, train_error = self.sess.run([self.qNetwork.opt, self.qNetwork.loss], feed_dict={self.qNetwork.input: batch_observation, self.qNetwork.targetQ: targetQ})
 			reward_log.append(rewardi)
 			print(episode, rewardi)
@@ -240,16 +308,16 @@ class DQN_Agent():
 		for episode in np.arange(20):
 			episode_reward = 0.0
 			state = self.env.reset()
-			if self.render:
-				self.env.render()
+			# if self.render: ### Tong commented: no render function()
+			# 	self.env.render()
 			is_terminal = False
 			while not is_terminal:
-				observation = np.array(state).reshape(1, -1)
+				observation = np.expand_dims(np.array(state),axis=0) ### Tong changed diemnsion 
 				q_values = self.sess.run(self.qNetwork.output, feed_dict={self.qNetwork.input: observation})
 				action = self.greedy_policy(q_values)
 				nextstate, reward, is_terminal, debug_info = self.env.step(action)
-				if self.render:
-					self.env.render()
+				# if self.render:   ### Tong commented: no render function 
+ 				# 	self.env.render()
 				state = nextstate
 				episode_reward = episode_reward+reward
 				cum_reward = cum_reward+reward
@@ -264,7 +332,8 @@ class DQN_Agent():
 		# Initialize your replay memory with a burn_in number of episodes / transitions.
 		state = self.env.reset()
 		for i in np.arange(self.replay.burn_in):
-			action = self.env.action_space.sample()
+			# action = self.env.action_space.sample()
+			action = self.env.action_space.sample('uniform') ### Tong added: sample (method)
 			nextstate, reward, is_terminal, debug_info = self.env.step(action)
 			self.replay.append([state, action, reward, nextstate, is_terminal])
 			if is_terminal:
@@ -283,7 +352,7 @@ class DQN_Agent():
 
 def parse_arguments():
 	parser = argparse.ArgumentParser(description='Deep Q Network Argument Parser')
-	parser.add_argument('--env',dest='env',type=str)
+	parser.add_argument('--env',dest='env',type=str,default='TOP_OPT_v1')
 	parser.add_argument('--render',dest='render',type=int,default=0)
 	parser.add_argument('--train',dest='train',type=int,default=1)
 	parser.add_argument('--test',dest='test',type=int,default=0)
