@@ -2,4 +2,4 @@
 .DS_Store
 data/
 model/
-src/log/
+src/logs/
