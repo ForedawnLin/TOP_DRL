@@ -184,6 +184,7 @@ class DQN_Agent():
 
 	def epsilon_greedy_policy(self, q_values):
 		# Creating epsilon greedy probabilities to sample from.
+		### Tong changed: The whole function changed  #### 
 		q_values=np.squeeze(q_values)
 		rnd = np.random.rand(q_values.shape[0],q_values.shape[1])  ### used for element-wise epsilon greedy policy 
 		bool_array=(rnd <= self.epsilon).astype(int)  ### for these element <= epsilon val, we set its value to one
@@ -198,7 +199,11 @@ class DQN_Agent():
 
 	def greedy_policy(self, q_values):
 		# Creating greedy policy for test time. 
-		return np.argmax(q_values)
+		# print ("test",q_values.shape)
+		# print (np.argmax(q_values))
+		# sys.exit()
+		# Tong: changed the output 
+		return np.argmax(q_values,axis=3)
 
 	def network_assign(self):
 		self.sess.run(tf.assign(self.tNetwork.w1, self.qNetwork.w1))
@@ -281,7 +286,7 @@ class DQN_Agent():
 				_, train_error = self.sess.run([self.qNetwork.opt, self.qNetwork.loss], feed_dict={self.qNetwork.input: batch_observation, self.qNetwork.targetQ: targetQ})
 			reward_log.append(rewardi)
 			print(episode, rewardi)
-			if episode % 100 == 0:
+			if (episode+1) % 100 == 0:
 				test_reward = self.test()
 				test_reward_log.append(test_reward/20.0)
 				test_episode.append(episode)
@@ -311,7 +316,9 @@ class DQN_Agent():
 			# if self.render: ### Tong commented: no render function()
 			# 	self.env.render()
 			is_terminal = False
+			i=0
 			while not is_terminal:
+				print ("Im in test loop") 
 				observation = np.expand_dims(np.array(state),axis=0) ### Tong changed diemnsion 
 				q_values = self.sess.run(self.qNetwork.output, feed_dict={self.qNetwork.input: observation})
 				action = self.greedy_policy(q_values)
